@@ -21,6 +21,7 @@
 // ========== Copyright Header End ============================================
 +incdir+../../../design/include
 +incdir+../../../design/chipset/include
++incdir+../../../design/chipset/noc_axi4_bridge/rtl
 +incdir+.
 
 cross_module.h

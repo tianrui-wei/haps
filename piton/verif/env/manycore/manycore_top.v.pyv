@@ -121,6 +121,11 @@ always #5000 core_ref_clk = ~core_ref_clk;                      // 100MHz
 `else
 always #500 core_ref_clk = ~core_ref_clk;                       // 1000MHz
 `endif
+
+initial begin
+        $fsdbDumpvars(0, cmp_top, "+all");
+end
+
 `endif
 
 `ifndef SYNC_MUX

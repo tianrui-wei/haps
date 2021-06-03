@@ -40,8 +40,7 @@
 `include "l2.tmp.h"
 `include "define.tmp.h"
 `include "iop.h"
-
-`define MEM_ADDR_WIDTH      64
+`include "noc_axi4_bridge_define.vh"
 
 module fake_mem_ctrl(
 
@@ -59,705 +58,161 @@ module fake_mem_ctrl(
 
 );
 
-reg mem_valid_in;
-reg [3*`NOC_DATA_WIDTH-1:0] mem_header_in;
-reg mem_ready_in;
+
+    wire uart_boot_en = 1;
+    wire phy_init_done = 1;
+    wire src_bridge_vr_noc2_val;
+    wire [`NOC_DATA_WIDTH-1:0] src_bridge_vr_noc2_dat;
+    wire src_bridge_vr_noc2_rdy;
+    wire bridge_dst_vr_noc3_val;
+    wire [`NOC_DATA_WIDTH-1:0] bridge_dst_vr_noc3_dat;
+    wire bridge_dst_vr_noc3_rdy;
+    wire [`AXI4_ID_WIDTH-1:0] m_axi_awid;
+    wire [`AXI4_ADDR_WIDTH-1:0] m_axi_awaddr;
+    wire [`AXI4_LEN_WIDTH-1:0] m_axi_awlen;
+    wire [`AXI4_SIZE_WIDTH-1:0] m_axi_awsize;
+    wire [`AXI4_BURST_WIDTH-1:0] m_axi_awburst;
+    wire m_axi_awlock;
+    wire [`AXI4_CACHE_WIDTH-1:0] m_axi_awcache;
+    wire [`AXI4_PROT_WIDTH-1:0] m_axi_awprot;
+    wire [`AXI4_QOS_WIDTH-1:0] m_axi_awqos = 0;
+    wire [`AXI4_REGION_WIDTH-1:0] m_axi_awregion = 0;
+    wire [`AXI4_USER_WIDTH-1:0] m_axi_awuser;
+    wire m_axi_awvalid;
+    wire m_axi_awready;
+    wire [`AXI4_ID_WIDTH-1:0] m_axi_wid;
+    wire [`AXI4_DATA_WIDTH-1:0] m_axi_wdata;
+    wire [`AXI4_STRB_WIDTH-1:0] m_axi_wstrb;
+    wire m_axi_wlast;
+    wire [`AXI4_USER_WIDTH-1:0] m_axi_wuser;
+    wire m_axi_wvalid;
+    wire m_axi_wready;
+    wire [`AXI4_ID_WIDTH-1:0] m_axi_arid;
+    wire [`AXI4_ADDR_WIDTH-1:0] m_axi_araddr;
+    wire [`AXI4_LEN_WIDTH-1:0] m_axi_arlen;
+    wire [`AXI4_SIZE_WIDTH-1:0] m_axi_arsize;
+    wire [`AXI4_BURST_WIDTH-1:0] m_axi_arburst;
+    wire m_axi_arlock;
+    wire [`AXI4_CACHE_WIDTH-1:0] m_axi_arcache;
+    wire [`AXI4_PROT_WIDTH-1:0] m_axi_arprot;
+    wire [`AXI4_QOS_WIDTH-1:0] m_axi_arqos = 0;
+    wire [`AXI4_REGION_WIDTH-1:0] m_axi_arregion = 0;
+    wire [`AXI4_USER_WIDTH-1:0] m_axi_aruser;
+    wire m_axi_arvalid;
+    wire m_axi_arready;
+    wire [`AXI4_ID_WIDTH-1:0] m_axi_rid;
+    wire [`AXI4_DATA_WIDTH-1:0] m_axi_rdata;
+    wire [`AXI4_RESP_WIDTH-1:0] m_axi_rresp;
+    wire m_axi_rlast;
+    wire [`AXI4_USER_WIDTH-1:0] m_axi_ruser;
+    wire m_axi_rvalid;
+    wire m_axi_rready;
+    wire [`AXI4_ID_WIDTH-1:0] m_axi_bid;
+    wire [`AXI4_RESP_WIDTH-1:0] m_axi_bresp;
+    wire [`AXI4_USER_WIDTH-1:0] m_axi_buser;
+    wire m_axi_bvalid;
+    wire m_axi_bready;
 
 
-//Input buffer
-
-reg [`NOC_DATA_WIDTH-1:0] buf_in_mem_f [10:0];
-reg [`NOC_DATA_WIDTH-1:0] buf_in_mem_next;
-reg [`MSG_LENGTH_WIDTH-1:0] buf_in_counter_f;
-reg [`MSG_LENGTH_WIDTH-1:0] buf_in_counter_next;
-reg [3:0] buf_in_wr_ptr_f;
-reg [3:0] buf_in_wr_ptr_next;
-
-always @ *
-begin
-    noc_ready_in = (buf_in_counter_f == 0) || (buf_in_counter_f < (buf_in_mem_f[0][`MSG_LENGTH]+1));
-end
-
-always @ *
-begin
-    if (noc_valid_in && noc_ready_in)
-    begin
-        buf_in_counter_next = buf_in_counter_f + 1;
-    end
-    else if (mem_valid_in && mem_ready_in)
-    begin
-        buf_in_counter_next = 0;
-    end
-    else
-    begin
-        buf_in_counter_next = buf_in_counter_f;
-    end
-end
-
-
-always @ (posedge clk)
-begin
-    if (!rst_n)
-    begin
-        buf_in_counter_f <= 0;
-    end
-    else
-    begin
-        buf_in_counter_f <= buf_in_counter_next;
-    end
-end
-
-always @ *
-begin
-    if (mem_valid_in && mem_ready_in)
-    begin
-        buf_in_wr_ptr_next = 0;
-    end
-    else if (noc_valid_in && noc_ready_in)
-    begin
-        buf_in_wr_ptr_next = buf_in_wr_ptr_f + 1;
-    end
-    else
-    begin
-        buf_in_wr_ptr_next = buf_in_wr_ptr_f;
-    end
-end
-
-
-always @ (posedge clk)
-begin
-    if (!rst_n)
-    begin
-        buf_in_wr_ptr_f <= 0;
-    end
-    else
-    begin
-        buf_in_wr_ptr_f <= buf_in_wr_ptr_next;
-    end
-end
-
-
-always @ *
-begin
-    if (noc_valid_in && noc_ready_in)
-    begin
-        buf_in_mem_next = noc_data_in;
-    end
-    else
-    begin
-        buf_in_mem_next = buf_in_mem_f[buf_in_wr_ptr_f];
-    end
-end
-
-always @ (posedge clk)
-begin
-    if (!rst_n)
-    begin
-        buf_in_mem_f[buf_in_wr_ptr_f] <= 0;
-    end
-    else
-    begin
-        buf_in_mem_f[buf_in_wr_ptr_f] <= buf_in_mem_next;
-    end
-end
-
-
-always @ *
-begin
-    mem_valid_in = (buf_in_counter_f != 0) && (buf_in_counter_f == (buf_in_mem_f[0][`MSG_LENGTH]+1));
-end
-
-always @ *
-begin
-    mem_header_in = {buf_in_mem_f[2], buf_in_mem_f[1], buf_in_mem_f[0]};
-end
-
-//Memory read/write
-
-wire [`MSG_TYPE_WIDTH-1:0] msg_type;
-wire [`MSG_MSHRID_WIDTH-1:0] msg_mshrid;
-wire [`MSG_DATA_SIZE_WIDTH-1:0] msg_data_size;
-wire [`PHY_ADDR_WIDTH-1:0] msg_addr;
-wire [`MSG_SRC_CHIPID_WIDTH-1:0] msg_src_chipid;
-wire [`MSG_SRC_X_WIDTH-1:0] msg_src_x;
-wire [`MSG_SRC_Y_WIDTH-1:0] msg_src_y;
-wire [`MSG_SRC_FBITS_WIDTH-1:0] msg_src_fbits;
-
-reg [`MSG_TYPE_WIDTH-1:0] msg_send_type;
-reg [`MSG_LENGTH_WIDTH-1:0] msg_send_length;
-reg [`NOC_DATA_WIDTH-1:0] msg_send_data [7:0];
-reg [`NOC_DATA_WIDTH-1:0] mem_temp;
-wire [`NOC_DATA_WIDTH*3-1:0] msg_send_header;
-
-
-
-
-l2_decoder decoder(
-    .msg_header         (mem_header_in),
-    .msg_type           (msg_type),
-    .msg_length         (),
-    .msg_mshrid         (msg_mshrid),
-    .msg_data_size      (msg_data_size),
-    .msg_cache_type     (),
-    .msg_subline_vector (),
-    .msg_mesi           (),
-    .msg_l2_miss        (),
-    .msg_subline_id     (),
-    .msg_last_subline   (),
-    .msg_addr           (msg_addr),
-    .msg_src_chipid     (msg_src_chipid),
-    .msg_src_x          (msg_src_x),
-    .msg_src_y          (msg_src_y),
-    .msg_src_fbits      (msg_src_fbits),
-    .msg_sdid           (),
-    .msg_lsid           ()
-);
-
-reg [63:0] write_mask;
-
-always @ *
-begin
-    if (msg_data_size == `MSG_DATA_SIZE_1B)
-    begin
-        write_mask = 64'hff00000000000000;
-        write_mask = write_mask >> (8*msg_addr[2:0]);
-    end
-    else if (msg_data_size == `MSG_DATA_SIZE_2B)
-    begin
-        write_mask = 64'hffff000000000000;
-        write_mask = write_mask >> (16*msg_addr[2:1]);
-    end
-    else if (msg_data_size == `MSG_DATA_SIZE_4B)
-    begin
-        write_mask = 64'hffffffff00000000;
-        write_mask = write_mask >> (32*msg_addr[2]);
-    end
-    else if (msg_data_size == `MSG_DATA_SIZE_8B)
-    begin
-        write_mask = 64'hffffffffffffffff;
-    end
-    else
-    begin
-        write_mask = 64'h0000000000000000;
-    end
-end
-
-
-always @ *
-begin
-    // initialize to get rid of msim warnings
-    mem_temp = `NOC_DATA_WIDTH'h0;
-    if (mem_valid_in)
-    begin
-        case (msg_type)
-        `MSG_TYPE_LOAD_MEM:
-        begin
-`ifdef PITON_DPI
-            msg_send_data[0] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000});
-            msg_send_data[1] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000});
-            msg_send_data[2] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000});
-            msg_send_data[3] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000});
-            msg_send_data[4] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000});
-            msg_send_data[5] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000});
-            msg_send_data[6] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000});
-            msg_send_data[7] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000});
-`else // ifdef PITON_DPI
-            $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000}, msg_send_data[0]);
-            $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000}, msg_send_data[1]);
-            $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000}, msg_send_data[2]);
-            $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000}, msg_send_data[3]);
-            $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000}, msg_send_data[4]);
-            $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000}, msg_send_data[5]);
-            $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000}, msg_send_data[6]);
-            $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000}, msg_send_data[7]);
-`endif // ifdef PITON_DPI
-`ifndef MINIMAL_MONITORING
-            $display("MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000}, msg_send_data[0]);
-            $display("MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000}, msg_send_data[1]);
-            $display("MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000}, msg_send_data[2]);
-            $display("MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000}, msg_send_data[3]);
-            $display("MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000}, msg_send_data[4]);
-            $display("MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000}, msg_send_data[5]);
-            $display("MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000}, msg_send_data[6]);
-            $display("MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000}, msg_send_data[7]);
-`endif
-            msg_send_type = `MSG_TYPE_LOAD_MEM_ACK;
-            msg_send_length = 8'd8;
-        end
-        `MSG_TYPE_STORE_MEM:
-        begin
-`ifdef PITON_DPI
-            write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000},buf_in_mem_f[3]);
-            write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000},buf_in_mem_f[4]);
-            write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000},buf_in_mem_f[5]);
-            write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000},buf_in_mem_f[6]);
-            write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000},buf_in_mem_f[7]);
-            write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000},buf_in_mem_f[8]);
-            write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000},buf_in_mem_f[9]);
-            write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000},buf_in_mem_f[10]);
-`else // ifdef PITON_DPI
-            $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000}, buf_in_mem_f[3]);
-            $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000}, buf_in_mem_f[4]);
-            $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000}, buf_in_mem_f[5]);
-            $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000}, buf_in_mem_f[6]);
-            $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000}, buf_in_mem_f[7]);
-            $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000}, buf_in_mem_f[8]);
-            $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000}, buf_in_mem_f[9]);
-            $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000}, buf_in_mem_f[10]);
-`endif // ifdef PITON_DPI
-`ifndef MINIMAL_MONITORING
-            $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000}, buf_in_mem_f[3]);
-            $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000}, buf_in_mem_f[4]);
-            $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000}, buf_in_mem_f[5]);
-            $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000}, buf_in_mem_f[6]);
-            $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000}, buf_in_mem_f[7]);
-            $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000}, buf_in_mem_f[8]);
-            $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000}, buf_in_mem_f[9]);
-            $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000}, buf_in_mem_f[10]);
-`endif
-            msg_send_type = `MSG_TYPE_STORE_MEM_ACK;
-            msg_send_length = 8'd0;
-        end
-        `MSG_TYPE_NC_LOAD_REQ:
-        begin
-            $display("Non-cacheable load request, size: %h, address: %h", msg_data_size, msg_addr);
-            msg_send_type = `MSG_TYPE_NC_LOAD_MEM_ACK;
-            case(msg_data_size)
-            `MSG_DATA_SIZE_1B: 
-            begin
-`ifndef PITON_DPI
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000}, mem_temp);
-`else // ifndef PITON_DPI
-                mem_temp = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000});
-`endif // ifndef PITON_DPI
-                mem_temp = (mem_temp & write_mask) << (8*msg_addr[2:0]);
-                msg_send_data[0] = {8{mem_temp[63:56]}};
-`ifndef MINIMAL_MONITORING
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}},msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5:0]}, msg_send_data[0]);
-`endif
-                msg_send_length = 8'd1;
-            end
-            `MSG_DATA_SIZE_2B: 
-            begin
-`ifndef PITON_DPI
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000}, mem_temp);
-`else // ifndef PITON_DPI
-                mem_temp = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000});
-`endif // ifndef PITON_DPI
-                mem_temp = (mem_temp & write_mask) << (16*msg_addr[2:1]);
-                msg_send_data[0] = {4{mem_temp[63:48]}};
-`ifndef MINIMAL_MONITORING
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}},msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5:1],1'b0}, msg_send_data[0]);
-`endif
-                msg_send_length = 8'd1;
-            end
-            `MSG_DATA_SIZE_4B: 
-            begin
-`ifndef PITON_DPI
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000}, mem_temp);
-`else // ifndef PITON_DPI
-                mem_temp = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000});
-`endif // ifndef PITON_DPI
-                mem_temp = (mem_temp & write_mask) << (32*msg_addr[2]);
-                msg_send_data[0] = {2{mem_temp[63:32]}};
-`ifndef MINIMAL_MONITORING
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}},msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5:2],2'b00}, msg_send_data[0]);
-`endif
-                msg_send_length = 8'd1;
-            end
-            `MSG_DATA_SIZE_8B: 
-            begin
-`ifndef PITON_DPI
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000}, msg_send_data[0]);
-`else // ifndef PITON_DPI
-                msg_send_data[0] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000});
-`endif // ifndef PITON_DPI
-`ifndef MINIMAL_MONITORING
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}},msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000}, msg_send_data[0]);
-`endif
-                msg_send_length = 8'd1;
-            end
-            `MSG_DATA_SIZE_16B: 
-            begin
-`ifndef PITON_DPI
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[`L2_DATA_SUBLINE],4'b0000}, msg_send_data[0]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[`L2_DATA_SUBLINE],4'b1000}, msg_send_data[1]);
-`else // ifndef PITON_DPI
-                msg_send_data[0] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[`L2_DATA_SUBLINE],4'b0000});
-                msg_send_data[1] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[`L2_DATA_SUBLINE],4'b1000});
-`endif // ifndef PITON_DPI
-`ifndef MINIMAL_MONITORING
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[`L2_DATA_SUBLINE],4'b0000}, msg_send_data[0]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[`L2_DATA_SUBLINE],4'b1000}, msg_send_data[1]);
-`endif
-                msg_send_length = 8'd2;
-            end
-            `MSG_DATA_SIZE_32B: // L2 currently does not support 32B DATA_ACK  
-            begin
-`ifndef PITON_DPI
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b00000}, msg_send_data[0]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b01000}, msg_send_data[1]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b10000}, msg_send_data[2]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b11000}, msg_send_data[3]);
-`else // ifndef PITON_DPI
-                msg_send_data[0] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b00000});
-                msg_send_data[1] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b01000});
-                msg_send_data[2] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b10000});
-                msg_send_data[3] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b11000});
-`endif // ifndef PITON_DPI
-`ifndef MINIMAL_MONITORING
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b00000}, msg_send_data[0]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b01000}, msg_send_data[1]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b10000}, msg_send_data[2]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                    msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b11000}, msg_send_data[3]);
-`endif
-                msg_send_length = 8'd4;
-            end
-            `MSG_DATA_SIZE_64B: 
-            begin
-`ifndef PITON_DPI
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000}, msg_send_data[0]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000}, msg_send_data[1]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000}, msg_send_data[2]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000}, msg_send_data[3]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000}, msg_send_data[4]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000}, msg_send_data[5]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000}, msg_send_data[6]);
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000}, msg_send_data[7]);
-`else // ifndef PITON_DPI
-                msg_send_data[0] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000});
-                msg_send_data[1] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000});
-                msg_send_data[2] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000});
-                msg_send_data[3] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000});
-                msg_send_data[4] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000});
-                msg_send_data[5] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000});
-                msg_send_data[6] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000});
-                msg_send_data[7] = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000});
-`endif // ifndef PITON_DPI
-`ifndef MINIMAL_MONITORING
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000}, msg_send_data[0]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000}, msg_send_data[1]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000}, msg_send_data[2]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000}, msg_send_data[3]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000}, msg_send_data[4]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000}, msg_send_data[5]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000}, msg_send_data[6]);
-                $display("NC_MemRead: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000}, msg_send_data[7]);
-`endif
-                msg_send_length = 8'd8;
-            end
-            endcase
-        end
-        `MSG_TYPE_NC_STORE_REQ:
-        begin
-            $display("Non-cacheable store request, size: %h, address: %h", msg_data_size, msg_addr);
-            msg_send_type = `MSG_TYPE_NC_STORE_MEM_ACK;
-            msg_send_length = 8'd0;
-            case(msg_data_size)
-            `MSG_DATA_SIZE_64B:
-            begin
-`ifdef PITON_DPI
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000},buf_in_mem_f[3]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000},buf_in_mem_f[4]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000},buf_in_mem_f[5]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000},buf_in_mem_f[6]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000},buf_in_mem_f[7]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000},buf_in_mem_f[8]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000},buf_in_mem_f[9]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000},buf_in_mem_f[10]);
-`else // ifdef PITON_DPI
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000}, buf_in_mem_f[3]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000}, buf_in_mem_f[4]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000}, buf_in_mem_f[5]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000}, buf_in_mem_f[6]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000}, buf_in_mem_f[7]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000}, buf_in_mem_f[8]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000}, buf_in_mem_f[9]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000}, buf_in_mem_f[10]);
-`endif // ifdef PITON_DPI
-`ifndef MINIMAL_MONITORING
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b000000}, buf_in_mem_f[3]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b001000}, buf_in_mem_f[4]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b010000}, buf_in_mem_f[5]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b011000}, buf_in_mem_f[6]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b100000}, buf_in_mem_f[7]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b101000}, buf_in_mem_f[8]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b110000}, buf_in_mem_f[9]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],6'b111000}, buf_in_mem_f[10]);
-`endif
-            end
-            `MSG_DATA_SIZE_32B:
-            begin
-`ifdef PITON_DPI
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b00000},buf_in_mem_f[3]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b01000},buf_in_mem_f[4]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b10000},buf_in_mem_f[5]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b11000},buf_in_mem_f[6]);
-`else // ifdef PITON_DPI
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b00000}, buf_in_mem_f[3]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b01000}, buf_in_mem_f[4]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b10000}, buf_in_mem_f[5]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b11000}, buf_in_mem_f[6]);
-`endif // ifdef PITON_DPI
-`ifndef MINIMAL_MONITORING
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b00000}, buf_in_mem_f[3]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b01000}, buf_in_mem_f[4]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b10000}, buf_in_mem_f[5]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5],5'b11000}, buf_in_mem_f[6]);
-`endif
-            end
-            `MSG_DATA_SIZE_16B:
-            begin
-`ifdef PITON_DPI
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5:4],4'b0000},buf_in_mem_f[3]);
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5:4],4'b1000},buf_in_mem_f[4]);
-`else // ifdef PITON_DPI
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5:4],4'b0000}, buf_in_mem_f[3]);
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5:4],4'b1000}, buf_in_mem_f[4]);
-`endif // ifdef PITON_DPI
-`ifndef MINIMAL_MONITORING
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5:4],4'b0000}, buf_in_mem_f[3]);
-                $display("MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],msg_addr[`L2_TAG_INDEX],msg_addr[5:4],4'b1000}, buf_in_mem_f[4]);
-`endif
-            end
-            default:
-            begin
-`ifndef PITON_DPI
-                $read_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000}, mem_temp);
-`else // ifndef PITON_DPI
-                mem_temp = read_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG], msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000});
-`endif // ifndef PITON_DPI
-                mem_temp = (mem_temp & ~write_mask) | (buf_in_mem_f[3] & write_mask);
-`ifndef PITON_DPI
-                $write_64b({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000}, mem_temp);
-`else // ifndef PITON_DPI
-                write_64b_call({{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000}, mem_temp);
-`endif // ifndef PITON_DPI
-`ifndef MINIMAL_MONITORING
-                $display("NC_MemWrite: %h : %h", {{(`MEM_ADDR_WIDTH-`PHY_ADDR_WIDTH){1'b0}}, msg_addr[`L2_TAG],
-                msg_addr[`L2_TAG_INDEX],msg_addr[5:3],3'b000}, mem_temp);
-`endif
-            end
-            endcase
-        end
-        default:
-        begin
-            msg_send_type = `MSG_TYPE_ERROR;
-            msg_send_length = 8'd0;
-        end
-        endcase
-    end
-end
-
-l2_encoder encoder(
-    .msg_dst_chipid             (msg_src_chipid),
-    .msg_dst_x                  (msg_src_x),
-    .msg_dst_y                  (msg_src_y),
-    .msg_dst_fbits              (msg_src_fbits),
-    .msg_length                 (msg_send_length),
-    .msg_type                   (msg_send_type),
-    .msg_mshrid                 (msg_mshrid),
-    .msg_data_size              ({`MSG_DATA_SIZE_WIDTH{1'b0}}),
-    .msg_cache_type             ({`MSG_CACHE_TYPE_WIDTH{1'b0}}),
-    .msg_subline_vector         ({`MSG_SUBLINE_VECTOR_WIDTH{1'b0}}),
-    .msg_mesi                   ({`MSG_MESI_BITS{1'b0}}),
-    .msg_l2_miss                (msg_addr[`PHY_ADDR_WIDTH-1]),
-    .msg_subline_id             ({`MSG_SUBLINE_ID_WIDTH{1'b0}}),
-    .msg_last_subline           ({`MSG_LAST_SUBLINE_WIDTH{1'b1}}),
-    .msg_addr                   (msg_addr),
-    .msg_src_chipid             ({`NOC_CHIPID_WIDTH{1'b0}}),
-    .msg_src_x                  ({`NOC_X_WIDTH{1'b0}}),
-    .msg_src_y                  ({`NOC_Y_WIDTH{1'b0}}),
-    .msg_src_fbits              ({`NOC_FBITS_WIDTH{1'b0}}),
-    .msg_sdid                   ({`MSG_SDID_WIDTH{1'b0}}),
-    .msg_lsid                   ({`MSG_LSID_WIDTH{1'b0}}),
-    .msg_header                 (msg_send_header)
+noc_axi4_bridge i_noc_axi4_bridge (
+    .clk                   (clk                   ),
+    .rst_n                 (rst_n                 ),
+    .uart_boot_en          (uart_boot_en          ),
+    .phy_init_done         (phy_init_done         ),
+    .src_bridge_vr_noc2_val(src_bridge_vr_noc2_val),
+    .src_bridge_vr_noc2_dat(src_bridge_vr_noc2_dat),
+    .src_bridge_vr_noc2_rdy(src_bridge_vr_noc2_rdy),
+    .bridge_dst_vr_noc3_val(bridge_dst_vr_noc3_val),
+    .bridge_dst_vr_noc3_dat(bridge_dst_vr_noc3_dat),
+    .bridge_dst_vr_noc3_rdy(bridge_dst_vr_noc3_rdy),
+    .m_axi_awid            (m_axi_awid            ),
+    .m_axi_awaddr          (m_axi_awaddr          ),
+    .m_axi_awlen           (m_axi_awlen           ),
+    .m_axi_awsize          (m_axi_awsize          ),
+    .m_axi_awburst         (m_axi_awburst         ),
+    .m_axi_awlock          (m_axi_awlock          ),
+    .m_axi_awcache         (m_axi_awcache         ),
+    .m_axi_awprot          (m_axi_awprot          ),
+    .m_axi_awqos           (m_axi_awqos           ),
+    .m_axi_awregion        (m_axi_awregion        ),
+    .m_axi_awuser          (m_axi_awuser          ),
+    .m_axi_awvalid         (m_axi_awvalid         ),
+    .m_axi_awready         (m_axi_awready         ),
+    .m_axi_wid             (m_axi_wid             ),
+    .m_axi_wdata           (m_axi_wdata           ),
+    .m_axi_wstrb           (m_axi_wstrb           ),
+    .m_axi_wlast           (m_axi_wlast           ),
+    .m_axi_wuser           (m_axi_wuser           ),
+    .m_axi_wvalid          (m_axi_wvalid          ),
+    .m_axi_wready          (m_axi_wready          ),
+    .m_axi_arid            (m_axi_arid            ),
+    .m_axi_araddr          (m_axi_araddr          ),
+    .m_axi_arlen           (m_axi_arlen           ),
+    .m_axi_arsize          (m_axi_arsize          ),
+    .m_axi_arburst         (m_axi_arburst         ),
+    .m_axi_arlock          (m_axi_arlock          ),
+    .m_axi_arcache         (m_axi_arcache         ),
+    .m_axi_arprot          (m_axi_arprot          ),
+    .m_axi_arqos           (m_axi_arqos           ),
+    .m_axi_arregion        (m_axi_arregion        ),
+    .m_axi_aruser          (m_axi_aruser          ),
+    .m_axi_arvalid         (m_axi_arvalid         ),
+    .m_axi_arready         (m_axi_arready         ),
+    .m_axi_rid             (m_axi_rid             ),
+    .m_axi_rdata           (m_axi_rdata           ),
+    .m_axi_rresp           (m_axi_rresp           ),
+    .m_axi_rlast           (m_axi_rlast           ),
+    .m_axi_ruser           (m_axi_ruser           ),
+    .m_axi_rvalid          (m_axi_rvalid          ),
+    .m_axi_rready          (m_axi_rready          ),
+    .m_axi_bid             (m_axi_bid             ),
+    .m_axi_bresp           (m_axi_bresp           ),
+    .m_axi_buser           (m_axi_buser           ),
+    .m_axi_bvalid          (m_axi_bvalid          ),
+    .m_axi_bready          (m_axi_bready          )
 );
 
 
 
-//Output buffer
-
-reg [`NOC_DATA_WIDTH-1:0] buf_out_mem_f [8:0];
-reg [`NOC_DATA_WIDTH-1:0] buf_out_mem_next [8:0];
-reg [`MSG_LENGTH_WIDTH-1:0] buf_out_counter_f;
-reg [`MSG_LENGTH_WIDTH-1:0] buf_out_counter_next;
-reg [3:0] buf_out_rd_ptr_f;
-reg [3:0] buf_out_rd_ptr_next;
-
-always @ *
-begin
-    noc_valid_out = (buf_out_counter_f != 0);
-end
-
-always @ *
-begin
-    mem_ready_in = (buf_out_counter_f == 0);
-end
-
-
-always @ *
-begin
-    if (noc_valid_out && noc_ready_out)
-    begin
-        buf_out_counter_next = buf_out_counter_f - 1;
-    end
-    else if (mem_valid_in && mem_ready_in)
-    begin
-        buf_out_counter_next = msg_send_length + 1;
-    end
-    else
-    begin
-        buf_out_counter_next = buf_out_counter_f;
-    end
-end
-
-always @ (posedge clk)
-begin
-    if (!rst_n)
-    begin
-        buf_out_counter_f <= 0;
-    end
-    else
-    begin
-        buf_out_counter_f <= buf_out_counter_next;
-    end
-end
-
-
-always @ *
-begin
-    if (mem_valid_in && mem_ready_in)
-    begin
-        buf_out_rd_ptr_next = 0;
-    end
-    else if (noc_valid_out && noc_ready_out)
-    begin
-        buf_out_rd_ptr_next = buf_out_rd_ptr_f + 1;
-    end
-    else
-    begin
-        buf_out_rd_ptr_next = buf_out_rd_ptr_f;
-    end
-end
-
-always @ (posedge clk)
-begin
-    if (!rst_n)
-    begin
-        buf_out_rd_ptr_f <= 0;
-    end
-    else
-    begin
-        buf_out_rd_ptr_f <= buf_out_rd_ptr_next;
-    end
-end
-
-
-
-always @ *
-begin
-    if (mem_valid_in && mem_ready_in)
-    begin
-        buf_out_mem_next[0] = msg_send_header[`NOC_DATA_WIDTH-1:0];
-        buf_out_mem_next[1] = msg_send_data[0];
-        buf_out_mem_next[2] = msg_send_data[1];
-        buf_out_mem_next[3] = msg_send_data[2];
-        buf_out_mem_next[4] = msg_send_data[3];
-        buf_out_mem_next[5] = msg_send_data[4];
-        buf_out_mem_next[6] = msg_send_data[5];
-        buf_out_mem_next[7] = msg_send_data[6];
-        buf_out_mem_next[8] = msg_send_data[7];
-    end
-    else
-    begin
-        buf_out_mem_next[0] = buf_out_mem_f[0];
-        buf_out_mem_next[1] = buf_out_mem_f[1];
-        buf_out_mem_next[2] = buf_out_mem_f[2];
-        buf_out_mem_next[3] = buf_out_mem_f[3];
-        buf_out_mem_next[4] = buf_out_mem_f[4];
-        buf_out_mem_next[5] = buf_out_mem_f[5];
-        buf_out_mem_next[6] = buf_out_mem_f[6];
-        buf_out_mem_next[7] = buf_out_mem_f[7];
-        buf_out_mem_next[8] = buf_out_mem_f[8];
-    end
-end
-
-always @ (posedge clk)
-begin
-    if (!rst_n)
-    begin
-        buf_out_mem_f[0] <= 0;
-        buf_out_mem_f[1] <= 0;
-        buf_out_mem_f[2] <= 0;
-        buf_out_mem_f[3] <= 0;
-        buf_out_mem_f[4] <= 0;
-        buf_out_mem_f[5] <= 0;
-        buf_out_mem_f[6] <= 0;
-        buf_out_mem_f[7] <= 0;
-        buf_out_mem_f[8] <= 0;
-    end
-    else
-    begin
-        buf_out_mem_f[0] <= buf_out_mem_next[0];
-        buf_out_mem_f[1] <= buf_out_mem_next[1];
-        buf_out_mem_f[2] <= buf_out_mem_next[2];
-        buf_out_mem_f[3] <= buf_out_mem_next[3];
-        buf_out_mem_f[4] <= buf_out_mem_next[4];
-        buf_out_mem_f[5] <= buf_out_mem_next[5];
-        buf_out_mem_f[6] <= buf_out_mem_next[6];
-        buf_out_mem_f[7] <= buf_out_mem_next[7];
-        buf_out_mem_f[8] <= buf_out_mem_next[8];
-    end
-end
-
-
-always @ *
-begin
-    noc_valid_out = (buf_out_counter_f != 0);
-end
-
-always @ *
-begin
-    // Tri: another quick fix for x
-    noc_data_out = 0;
-    if (buf_out_rd_ptr_f < 9)
-        noc_data_out = buf_out_mem_f[buf_out_rd_ptr_f];
-end
-
-`ifndef MINIMAL_MONITORING
-always @(posedge clk) begin
-    if (noc_valid_in & noc_ready_in) begin
-`ifdef VERILATOR
-        $display("FakeMem: input: %h", noc_data_in);
-`else
-        $display("FakeMem: input: %h", noc_data_in, $time);
-`endif
-    end
-    if (noc_valid_out & noc_ready_out) begin
-`ifdef VERILATOR
-        $display("FakeMem: output %h", noc_data_out);
-`else
-        $display("FakeMem: output %h", noc_data_out, $time);
-`endif
-    end
-end
-`endif // endif MINIMAL_MONITORING
+axi_ram #(.DATA_WIDTH(`AXI4_DATA_WIDTH), .ADDR_WIDTH(`AXI4_ADDR_WIDTH), .ID_WIDTH(`AXI4_ID_WIDTH)) i_axi_ram (
+    .clk          (clk          ),
+    .rst          (!rst_n        ),
+    .s_axi_awid   (m_axi_awid   ),
+    .s_axi_awaddr (m_axi_awaddr ),
+    .s_axi_awlen  (m_axi_awlen  ),
+    .s_axi_awsize (m_axi_awsize ),
+    .s_axi_awburst(m_axi_awburst),
+    .s_axi_awlock (m_axi_awlock ),
+    .s_axi_awcache(m_axi_awcache),
+    .s_axi_awprot (m_axi_awprot ),
+    .s_axi_awvalid(m_axi_awvalid),
+    .s_axi_awready(m_axi_awready),
+    .s_axi_wdata  (m_axi_wdata  ),
+    .s_axi_wstrb  (m_axi_wstrb  ),
+    .s_axi_wlast  (m_axi_wlast  ),
+    .s_axi_wvalid (m_axi_wvalid ),
+    .s_axi_wready (m_axi_wready ),
+    .s_axi_bid    (m_axi_bid    ),
+    .s_axi_bresp  (m_axi_bresp  ),
+    .s_axi_bvalid (m_axi_bvalid ),
+    .s_axi_bready (m_axi_bready ),
+    .s_axi_arid   (m_axi_arid   ),
+    .s_axi_araddr (m_axi_araddr ),
+    .s_axi_arlen  (m_axi_arlen  ),
+    .s_axi_arsize (m_axi_arsize ),
+    .s_axi_arburst(m_axi_arburst),
+    .s_axi_arlock (m_axi_arlock ),
+    .s_axi_arcache(m_axi_arcache),
+    .s_axi_arprot (m_axi_arprot ),
+    .s_axi_arvalid(m_axi_arvalid),
+    .s_axi_arready(m_axi_arready),
+    .s_axi_rid    (m_axi_rid    ),
+    .s_axi_rdata  (m_axi_rdata  ),
+    .s_axi_rresp  (m_axi_rresp  ),
+    .s_axi_rlast  (m_axi_rlast  ),
+    .s_axi_rvalid (m_axi_rvalid ),
+    .s_axi_rready (m_axi_rready )
+);
 
 endmodule
 
