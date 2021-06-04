@@ -171,6 +171,9 @@ initial begin
             mem[j] = 0;
         end
     end
+
+    // after zeroing everything, readmemh
+    $readmemh("mem.vh",mem);
 end
 
 always @* begin
