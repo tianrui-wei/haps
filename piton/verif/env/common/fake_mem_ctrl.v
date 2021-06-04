@@ -59,14 +59,8 @@ module fake_mem_ctrl(
 );
 
 
-    wire uart_boot_en = 1;
+    wire uart_boot_en = 0;
     wire phy_init_done = 1;
-    wire src_bridge_vr_noc2_val;
-    wire [`NOC_DATA_WIDTH-1:0] src_bridge_vr_noc2_dat;
-    wire src_bridge_vr_noc2_rdy;
-    wire bridge_dst_vr_noc3_val;
-    wire [`NOC_DATA_WIDTH-1:0] bridge_dst_vr_noc3_dat;
-    wire bridge_dst_vr_noc3_rdy;
     wire [`AXI4_ID_WIDTH-1:0] m_axi_awid;
     wire [`AXI4_ADDR_WIDTH-1:0] m_axi_awaddr;
     wire [`AXI4_LEN_WIDTH-1:0] m_axi_awlen;
@@ -119,12 +113,12 @@ noc_axi4_bridge i_noc_axi4_bridge (
     .rst_n                 (rst_n                 ),
     .uart_boot_en          (uart_boot_en          ),
     .phy_init_done         (phy_init_done         ),
-    .src_bridge_vr_noc2_val(src_bridge_vr_noc2_val),
-    .src_bridge_vr_noc2_dat(src_bridge_vr_noc2_dat),
-    .src_bridge_vr_noc2_rdy(src_bridge_vr_noc2_rdy),
-    .bridge_dst_vr_noc3_val(bridge_dst_vr_noc3_val),
-    .bridge_dst_vr_noc3_dat(bridge_dst_vr_noc3_dat),
-    .bridge_dst_vr_noc3_rdy(bridge_dst_vr_noc3_rdy),
+    .src_bridge_vr_noc2_val(noc_valid_in),
+    .src_bridge_vr_noc2_dat(noc_data_in),
+    .src_bridge_vr_noc2_rdy(noc_ready_in),
+    .bridge_dst_vr_noc3_val(noc_valid_out),
+    .bridge_dst_vr_noc3_dat(noc_data_out),
+    .bridge_dst_vr_noc3_rdy(noc_ready_out),
     .m_axi_awid            (m_axi_awid            ),
     .m_axi_awaddr          (m_axi_awaddr          ),
     .m_axi_awlen           (m_axi_awlen           ),
@@ -174,7 +168,7 @@ noc_axi4_bridge i_noc_axi4_bridge (
 
 
 
-axi_ram #(.DATA_WIDTH(`AXI4_DATA_WIDTH), .ADDR_WIDTH(`AXI4_ADDR_WIDTH), .ID_WIDTH(`AXI4_ID_WIDTH)) i_axi_ram (
+axi_ram #(.DATA_WIDTH(`AXI4_DATA_WIDTH), .ADDR_WIDTH(16), .ID_WIDTH(`AXI4_ID_WIDTH)) i_axi_ram (
     .clk          (clk          ),
     .rst          (!rst_n        ),
     .s_axi_awid   (m_axi_awid   ),
