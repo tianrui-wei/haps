@@ -122,9 +122,9 @@ always #5000 core_ref_clk = ~core_ref_clk;                      // 100MHz
 always #500 core_ref_clk = ~core_ref_clk;                       // 1000MHz
 `endif
 
-initial begin
-        $fsdbDumpvars(0, cmp_top, "+all");
-end
+//initial begin
+//        $fsdbDumpvars(0, cmp_top, "+all");
+//end
 
 `endif
 

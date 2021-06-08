@@ -1703,7 +1703,7 @@ sub generic_sim_run
         push (@{$opt{sim_run_args}}, "-vcd $vcdfile") ;
       }
     } else {
-      push (@{$opt{sim_run_args}}, "+vcs+fsdbdumpvars") ;
+##      push (@{$opt{sim_run_args}}, "+vcs+fsdbdumpvars") ;
     }
 
     # convert -args to +args
