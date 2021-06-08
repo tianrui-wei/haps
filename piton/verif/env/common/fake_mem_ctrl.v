@@ -168,7 +168,7 @@ noc_axi4_bridge i_noc_axi4_bridge (
 
 
 
-axi_ram #(.DATA_WIDTH(`AXI4_DATA_WIDTH), .ADDR_WIDTH(16), .ID_WIDTH(`AXI4_ID_WIDTH)) i_axi_ram (
+axi_ram #(.DATA_WIDTH(`AXI4_DATA_WIDTH), .ADDR_WIDTH(28), .ID_WIDTH(`AXI4_ID_WIDTH)) i_axi_ram (
     .clk          (clk          ),
     .rst          (!rst_n        ),
     .s_axi_awid   (m_axi_awid   ),
